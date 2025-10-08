@@ -401,7 +401,8 @@ begin
     if not ASsigned(LJson) then
       LJson := TJSONObject.Create;
 
-    LAccountsArray := LJson.GetValue<TJSONArray>('accounts');
+    // Use FindValue to avoid exception when 'accounts' doesn't exist
+    LAccountsArray := LJson.FindValue('accounts') as TJSONArray;
     if not ASsigned(LAccountsArray) then
     begin
       LAccountsArray := TJSONArray.Create;
@@ -469,7 +470,8 @@ begin
     LJson := TJSONObject.ParseJSONValue(TFile.ReadAllText(LAccountsFile,
       TEncoding.UTF8)) as TJSONObject;
     try
-      LAccountsArray := LJson.GetValue<TJSONArray>('accounts');
+      // Use FindValue to avoid exception when 'accounts' doesn't exist
+      LAccountsArray := LJson.FindValue('accounts') as TJSONArray;
       if ASsigned(LAccountsArray) then
       begin
         for I := 0 to LAccountsArray.Count - 1 do
