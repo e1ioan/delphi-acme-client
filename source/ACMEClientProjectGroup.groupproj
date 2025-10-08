@@ -1,0 +1,60 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{4E04E7DF-CC16-4670-8AF4-FF951D75C061}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="demo\ACMEClientConsole.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="demo\ACMEClientGUI.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="demo\ACMEHTTPServerDemo.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="ACMEClientConsole">
+        <MSBuild Projects="demo\ACMEClientConsole.dproj"/>
+    </Target>
+    <Target Name="ACMEClientConsole:Clean">
+        <MSBuild Projects="demo\ACMEClientConsole.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="ACMEClientConsole:Make">
+        <MSBuild Projects="demo\ACMEClientConsole.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="ACMEClientGUI">
+        <MSBuild Projects="demo\ACMEClientGUI.dproj"/>
+    </Target>
+    <Target Name="ACMEClientGUI:Clean">
+        <MSBuild Projects="demo\ACMEClientGUI.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="ACMEClientGUI:Make">
+        <MSBuild Projects="demo\ACMEClientGUI.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="ACMEHTTPServerDemo">
+        <MSBuild Projects="demo\ACMEHTTPServerDemo.dproj"/>
+    </Target>
+    <Target Name="ACMEHTTPServerDemo:Clean">
+        <MSBuild Projects="demo\ACMEHTTPServerDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="ACMEHTTPServerDemo:Make">
+        <MSBuild Projects="demo\ACMEHTTPServerDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="ACMEClientConsole;ACMEClientGUI;ACMEHTTPServerDemo"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="ACMEClientConsole:Clean;ACMEClientGUI:Clean;ACMEHTTPServerDemo:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="ACMEClientConsole:Make;ACMEClientGUI:Make;ACMEHTTPServerDemo:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
