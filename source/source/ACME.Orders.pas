@@ -31,6 +31,12 @@ type
     FStorageFolder: string;
     FOnHTTPChallengeContinue: TNotifyEvent;
     FOnDNSChallengeContinue: TOnDNSChallenge;
+
+    // NEW: expose created files after NewOrder
+    FCertFile: string;
+    FKeyFile: string;
+    FChainFile: string;
+
     procedure SetCertificateStoragePath(const Value: string);
     function GetCertificateStoragePath: string;
     procedure InternalLog(ASender: TObject; AMessage: string);
@@ -99,6 +105,11 @@ type
 
     function IsOpenSSLLoaded: boolean;
 
+    // NEW: created output files (full paths)
+    property CertFile: string read FCertFile;
+    property KeyFile: string read FKeyFile;
+    property ChainFile: string read FChainFile;
+
     property Client: TAcmeClient read FClient;
     property Providers: TACMEProviders read FProviders;
     property StorageFolder: string read GetCertificateStoragePath
@@ -120,6 +131,11 @@ begin
   FProviders := TACMEProviders.Create('', InternalLog);
   StorageFolder := GetDefaultStorageFolder;
   FProviders.OnLog := InternalLog;
+
+  // NEW
+  FCertFile := '';
+  FKeyFile := '';
+  FChainFile := '';
 end;
 
 procedure TACMEOrders.DeleteOrder(const AFileName: string);
@@ -1169,8 +1185,15 @@ var
   LExistingKid, LExistingDirectoryUrl, LExistingPrivateKey: string;
   LTempKeyFile: string;
   LPrivateKeyPem: string;
+  LHadExistingAccount: Boolean;
+  LAllAuthsOk: Boolean;
 begin
   Result := false;
+
+  // NEW: clear last run
+  FCertFile := '';
+  FKeyFile := '';
+  FChainFile := '';
 
   // Copy const parameter to local variable so we can modify CommonName
   LCsrSubject := ACsrSubject;
@@ -1181,8 +1204,11 @@ begin
     Log('=== Initializing ACME Client ===');
     FClient.Initialize(AProvider.DirectoryUrl);
 
+    // IMPORTANT: capture this before any CreateOrLoadAccount calls
+    LHadExistingAccount := AccountExists(AProvider.Id, AEmail);
+
     // Check if account already exists for this provider and email
-    if AccountExists(AProvider.Id, AEmail) then
+    if LHadExistingAccount then
     begin
       Log('Existing account found for email: ' + AEmail);
       Log('Loading existing account...');
@@ -1198,8 +1224,7 @@ begin
         // Create a temporary file with the PEM data
         LTempKeyFile := TPath.GetTempFileName;
         try
-          TFile.WriteAllText(LTempKeyFile, LExistingPrivateKey,
-            TEncoding.ASCII);
+          TFile.WriteAllText(LTempKeyFile, LExistingPrivateKey, TEncoding.ASCII);
           FClient.LoadPrivateKeyFromPem(LTempKeyFile);
         finally
           TFile.Delete(LTempKeyFile);
@@ -1213,6 +1238,7 @@ begin
           Log('WARNING: Existing account validation failed, creating new account...');
           FClient.GenerateRsaKeyPair2048;
           FClient.CreateOrLoadAccount(AEmail, True);
+          LHadExistingAccount := False; // we effectively created/rotated account state
         end
         else
         begin
@@ -1224,6 +1250,7 @@ begin
         Log('ERROR: Failed to load existing account, creating new account...');
         FClient.GenerateRsaKeyPair2048;
         FClient.CreateOrLoadAccount(AEmail, True);
+        LHadExistingAccount := False;
       end;
     end
     else
@@ -1246,7 +1273,7 @@ begin
       LAuths := LOrderJson.GetValue<TJSONArray>('authorizations');
       if (LAuths = nil) or (LAuths.Count = 0) then
         raise Exception.Create('No authorizations in order');
-      LAuthUrl := LAuths.Items[0].Value;
+
       LFinalizeUrl := LOrderJson.GetValue<string>('finalize');
 
       LStoragePath := GetCertificateStoragePath;
@@ -1265,8 +1292,8 @@ begin
       // Set the out parameter with just the filename (not full path)
       AOrderFile := Format('order_%s.json', [LDomainPrefix]);
 
-      // Save account private key and state only if we created a new account
-      if not AccountExists(AProvider.Id, AEmail) then
+      // Save account private key and state only if we created a new account in this run
+      if not LHadExistingAccount then
       begin
         // Get private key as PEM string
         LTempKeyFile := TPath.GetTempFileName;
@@ -1284,8 +1311,7 @@ begin
       end
       else
       begin
-        Log('Using existing account for provider: ' + AProvider.Id + ', email: '
-          + AEmail);
+        Log('Using existing account for provider: ' + AProvider.Id + ', email: ' + AEmail);
       end;
 
       // Save order state
@@ -1313,8 +1339,7 @@ begin
         LCsrSubject.CommonName := ADomains[0];
 
       // For new certificates, we generate a new private key, so pass empty string for account private key
-      LCsrDer := GenerateCsr(ADomains, '', LCsrFile, LCsrSubject,
-        LPrivateKeyFile);
+      LCsrDer := GenerateCsr(ADomains, '', LCsrFile, LCsrSubject, LPrivateKeyFile);
 
       // Save CSR subject details to order state
       LOrderState.CsrCountry := LCsrSubject.Country;
@@ -1328,31 +1353,45 @@ begin
       // Update order state with CSR details
       SaveOrderState(LOrderState, LOrderFile);
 
-      // Step 8: Handle challenge
-      Log('=== Processing Challenge ===');
-      LSuccess := false;
-      case AChallengeOptions.ChallengeType of
-        ctHttp01:
-          LSuccess := HandleHttp01Challenge(LAuthUrl, ADomains,
-            AChallengeOptions.HttpPort);
-        ctDns01:
-          LSuccess := HandleDns01Challenge(LAuthUrl, ADomains, false);
+      // Step 8: Handle challenges for ALL authorizations
+      Log('=== Processing Challenges ===');
+
+      LAllAuthsOk := True;
+
+      for LIdx := 0 to LAuths.Count - 1 do
+      begin
+        LAuthUrl := LAuths.Items[LIdx].Value;
+        Log(Format('Processing authorization %d/%d: %s', [LIdx + 1, LAuths.Count, LAuthUrl]));
+
+        LSuccess := false;
+        case AChallengeOptions.ChallengeType of
+          ctHttp01:
+            LSuccess := HandleHttp01Challenge(LAuthUrl, ADomains, AChallengeOptions.HttpPort);
+          ctDns01:
+            LSuccess := HandleDns01Challenge(LAuthUrl, ADomains, false);
+        end;
+
+        if not LSuccess then
+        begin
+          LAllAuthsOk := False;
+          Break;
+        end;
       end;
 
-      if not LSuccess then
+      if not LAllAuthsOk then
       begin
-        Log('Challenge validation failed. Cannot proceed with certificate issuance.');
+        Log('Challenge validation failed for at least one authorization. Cannot proceed with certificate issuance.');
         Exit;
       end;
 
       // Step 9: Finalize and download certificate
       Log('=== Finalizing Certificate Order ===');
-      LCertPem := FClient.FinalizeAndDownloadWithCsr(LFinalizeUrl, LCsrDer,
-        LCertificateUrl);
+      LCertPem := FClient.FinalizeAndDownloadWithCsr(LFinalizeUrl, LCsrDer, LCertificateUrl);
 
       if LCertPem = '' then
         raise Exception.Create('No certificate returned');
 
+{
       // Step 10: Save certificate
       TFile.WriteAllText(LCertificateFile, LCertPem, TEncoding.ASCII);
       Log('Certificate saved to: ' + LCertificateFile);
@@ -1360,6 +1399,32 @@ begin
       // Split certificate bundle for Indy compatibility
       if IsCertificateBundled(LCertificateFile) then
         SplitCertificateBundle(LCertificateFile);
+}
+
+      // Step 10: Save certificate
+      TFile.WriteAllText(LCertificateFile, LCertPem, TEncoding.ASCII);
+      Log('Certificate saved to: ' + LCertificateFile);
+
+      // NEW: always expose key path (created by GenerateCsr)
+      FKeyFile := LPrivateKeyFile;
+
+      // Split certificate bundle for Indy compatibility
+      if IsCertificateBundled(LCertificateFile) then
+      begin
+        SplitCertificateBundle(LCertificateFile);
+
+        // NEW: after split, prefer server_*.pem + chain_*.pem
+        FCertFile := TPath.Combine(ExtractFilePath(LCertificateFile),
+          Format('server_%s.pem', [LDomainPrefix]));
+        FChainFile := TPath.Combine(ExtractFilePath(LCertificateFile),
+          Format('chain_%s.pem', [LDomainPrefix]));
+      end
+      else
+      begin
+        // NEW: single cert, no chain
+        FCertFile := LCertificateFile;
+        FChainFile := '';
+      end;
 
       // Step 11: Update order state with certificate URL
       LOrderState.Status := 'valid';
@@ -1382,6 +1447,7 @@ begin
     end;
   end;
 end;
+
 
 function TACMEOrders.ResumeExistingOrder(const AOrderFile: string = '')
   : boolean;
