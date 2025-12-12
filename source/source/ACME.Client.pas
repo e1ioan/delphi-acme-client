@@ -768,11 +768,12 @@ begin
       LOrder.Free;
       LOrder := FinalizeOrder(AFinalizeUrl, ACsrDer);
     end
-    else
+    else if SameText(LStatus, 'pending') or SameText(LStatus, 'processing') then
     begin
-      raise EAcmeError.Create('Order is not ready for finalization. Status: '
-        + LStatus);
-    end;
+      // just wait, do not raise
+    end
+    else
+      raise EAcmeError.Create('Order is not ready for finalization. Status: ' + LStatus);
 
     // Poll for completion
     Debug('Polling for order completion');
