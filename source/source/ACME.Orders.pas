@@ -73,7 +73,7 @@ type
     function CanSkipDnsValidation(const AOrderState: TAcmeOrderState): boolean;
 
   public
-    constructor Create;
+    constructor Create(ADefaultFolder: string = '');
     destructor Destroy; override;
 
     // Main flow operations
@@ -124,12 +124,12 @@ implementation
 
 { TACMEOrders }
 
-constructor TACMEOrders.Create;
+constructor TACMEOrders.Create(ADefaultFolder: string);
 begin
   inherited Create;
   FClient := TAcmeClient.Create(InternalLog);
-  FProviders := TACMEProviders.Create('', InternalLog);
-  StorageFolder := GetDefaultStorageFolder;
+  FProviders := TACMEProviders.Create(ADefaultFolder, InternalLog);
+  StorageFolder := GetDefaultStorageFolder(ADefaultFolder);
   FProviders.OnLog := InternalLog;
 
   // NEW
@@ -2083,7 +2083,7 @@ begin
         // Build certificate file path
         LDomainPrefix := StringReplace(LOrderFile, 'order_', '', [rfIgnoreCase]);
         LDomainPrefix := StringReplace(LDomainPrefix, '.json', '', [rfIgnoreCase]);
-        LCertFile := TPath.Combine(GetCertificateStoragePath, 
+        LCertFile := TPath.Combine(GetCertificateStoragePath,
           Format('certificate_%s.pem', [LDomainPrefix]));
 
         // Get actual certificate expiry date from the certificate file
@@ -2093,16 +2093,16 @@ begin
           LFailedList.Add(LOrderFile);
           Continue;
         end;
-        
+
         LExpiryDate := GetCertificateExpiryDate(LCertFile);
-        
+
         if LExpiryDate <= 0 then
         begin
           Log('WARNING: Could not read certificate expiry date from ' + LCertFile);
           LFailedList.Add(LOrderFile);
           Continue;
         end;
-        
+
         LDaysUntilExpiry := DaysBetween(Now, LExpiryDate);
 
         Log('---');
