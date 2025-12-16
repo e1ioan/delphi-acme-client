@@ -90,7 +90,7 @@ type
     property OnLog: TOnLog read FOnLog write SetOnLog;
   end;
 
-function GetDefaultStorageFolder: string;
+function GetDefaultStorageFolder(AFolder: string = ''): string;
 function CheckFolderExists(ADirectory: string; ACreate: boolean): boolean;
 
 implementation
@@ -115,9 +115,9 @@ begin
   end;
 end;
 
-function GetDefaultStorageFolder: string;
+function GetDefaultStorageFolder(AFolder: string): string;
 begin
-  Result := TPath.Combine(TPath.GetDocumentsPath, ACME_DEFAULT_STORAGE_FOLDER);
+  Result := TPath.Combine(TPath.GetDocumentsPath, if AFolder.IsEmpty then ACME_DEFAULT_STORAGE_FOLDER else AFolder);
   Result := IncludeTrailingPathDelimiter(Result);
   CheckFolderExists(Result, true);
 end;
